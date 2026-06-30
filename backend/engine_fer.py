@@ -19,6 +19,24 @@ EMO_COLOR = {
     "fear":       (120, 0, 180),
 }
 
+# ── Inference calibration ──────────────────────────────────────
+# 1) Logit adjustment / prior correction. Training oversampled disgust
+#    20× (see history.json: self_oversample=20.0) leaving a residual bias
+#    toward disgust at inference. Subtracting from disgust logits restores
+#    the prior — see "Long-tail learning via logit adjustment"
+#    (Menon et al., NeurIPS 2020). Index order matches EMO above.
+LOGIT_BIAS = [0.0, 0.0, 0.0, 0.0, 0.0, -1.5, 0.0]  # disgust at idx 5
+
+# 2) Softmax temperature > 1 flattens the distribution. argmax unchanged;
+#    displayed top-1 percentage drops and runners-up become visible — wrong
+#    predictions look like uncertainty instead of confident error.
+SOFTMAX_TEMPERATURE = 1.5
+
+# 3) Minimum face-crop side. MTCNN already filters at min_face_size=60;
+#    this is a second gate to skip very distant faces whose classifier
+#    output would just be noise.
+MIN_CROP_PX = 100
+
 _MIN_HITS   = 3
 _MAX_MISS   = 8
 _IOU_THRESH = 0.25
@@ -159,13 +177,21 @@ def preprocess_face(face_bgr, img_size):
     ])
     return tf(face_pil).unsqueeze(0)
 
+_BIAS_CACHE = {}
+
+def _logit_bias_on(device):
+    key = str(device)
+    if key not in _BIAS_CACHE:
+        _BIAS_CACHE[key] = torch.tensor(LOGIT_BIAS, dtype=torch.float32, device=device)
+    return _BIAS_CACHE[key]
+
 @torch.no_grad()
 def predict_batch(model, faces_tensor, device):
     if faces_tensor is None:
         return np.array([])
     x = faces_tensor.to(device)
-    logits = model(x)
-    return torch.softmax(logits, 1).cpu().numpy()
+    logits = model(x) + _logit_bias_on(device)
+    return torch.softmax(logits / SOFTMAX_TEMPERATURE, 1).cpu().numpy()
 
 def draw_panel(frame, faces_probs, face_rects):
     """在帧上绘制检测结果"""
@@ -338,7 +364,8 @@ class EngineFER:
                 # Expand by margin then clip to image bounds.
                 x1 = max(0, int(x1) - margin); y1 = max(0, int(y1) - margin)
                 x2 = min(W, int(x2) + margin); y2 = min(H, int(y2) + margin)
-                if x2 - x1 < 24 or y2 - y1 < 24:
+                # Drop faces too small to classify reliably (see MIN_CROP_PX)
+                if x2 - x1 < MIN_CROP_PX or y2 - y1 < MIN_CROP_PX:
                     continue
                 tensors.append(preprocess_face(frame[y1:y2, x1:x2], self.img_size))
                 raw_rects.append((x1, y1, x2 - x1, y2 - y1))
