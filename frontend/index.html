@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EmotionLens — One Model, Many Lenses</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Swiper 11 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+  <!-- App styles -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-active-mode="m0">
+
+  <!-- ═══════════════ LOADING OVERLAY ═══════════════ -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="pokeball-spinner">
+      <div class="pokeball-top"></div>
+      <div class="pokeball-btm"></div>
+      <div class="pokeball-center"><div class="pokeball-btn"></div></div>
+    </div>
+    <p class="loading-text">Initializing EmotionLens<span class="dots"></span></p>
+  </div>
+
+  <!-- ═══════════════ HEADER ═══════════════ -->
+  <header class="top-bar">
+    <div class="top-bar__left">
+      <div class="pokeball-icon">
+        <div class="pb-top"></div>
+        <div class="pb-btm"></div>
+        <div class="pb-ctr"></div>
+      </div>
+      <h1 class="logo">Emotion<span>Lens</span></h1>
+      <span class="tagline">One model, many lenses.</span>
+    </div>
+    <div class="top-bar__right">
+      <label class="model-picker" for="model-select" title="Switch active emotion model">
+        <span class="model-picker__label">Model</span>
+        <select id="model-select" class="model-select" disabled>
+          <option value="">Loading…</option>
+        </select>
+      </label>
+      <div class="connection-badge" id="conn-badge">
+        <span class="conn-dot"></span>
+        <span class="conn-label">Disconnected</span>
+      </div>
+      <div class="fps-badge" id="fps-badge">0 FPS</div>
+    </div>
+  </header>
+
+  <!-- ═══════════════ MAIN DASHBOARD ═══════════════ -->
+  <main class="dashboard">
+
+    <!-- ────── LEFT: Camera Feed ────── -->
+    <section class="camera-section">
+      <div class="camera-card">
+        <div class="camera-card__header">
+          <div class="red-dot"></div>
+          <span>LIVE FEED</span>
+          <span class="cam-res" id="cam-res">640×480</span>
+        </div>
+        <div class="camera-wrapper" id="camera-wrapper">
+          <video id="webcam" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div class="cam-placeholder" id="cam-placeholder">
+            <div class="pokeball-spinner small">
+              <div class="pokeball-top"></div>
+              <div class="pokeball-btm"></div>
+              <div class="pokeball-center"><div class="pokeball-btn"></div></div>
+            </div>
+            <p>Requesting camera access…</p>
+          </div>
+        </div>
+        <div class="camera-card__footer">
+          <span id="face-count">No faces detected</span>
+          <span class="share-hint" id="share-hint" title="Share this link!"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ────── RIGHT: Sidebar ────── -->
+    <aside class="sidebar">
+
+      <!-- Big Lens Title -->
+      <h2 class="lens-title" id="lens-title">Live</h2>
+
+      <!-- Dominant emotion display -->
+      <div class="glass-card dominant-card">
+        <div class="card-label">DOMINANT EMOTION</div>
+        <div class="dominant-display">
+          <span class="dominant-emoji" id="dominant-emoji">😐</span>
+          <div class="dominant-info">
+            <span class="dominant-name" id="dominant-name">Neutral</span>
+            <span class="type-badge" id="dominant-badge" data-type="neutral">NORMAL</span>
+          </div>
+          <span class="dominant-pct" id="dominant-pct">0%</span>
+        </div>
+      </div>
+
+      <!-- Emotion probability bars -->
+      <div class="glass-card bars-card">
+        <div class="card-label">EMOTION ANALYSIS</div>
+        <div class="emotion-bars" id="emotion-bars"></div>
+      </div>
+
+      <!-- Mode-specific output panel -->
+      <div class="glass-card mode-panel" id="mode-panel">
+        <div class="card-label" id="mode-panel-title">LIVE</div>
+        <div class="mode-content" id="mode-content">
+          <p class="mode-placeholder">Loading...</p>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ═══════════════ LENS CAROUSEL ═══════════════ -->
+  <section class="mode-carousel-section">
+    <div class="swiper mode-swiper">
+      <div class="swiper-wrapper">
+
+        <!-- M0 · Live -->
+        <div class="swiper-slide mode-slide" data-mode="m0">
+          <div class="mode-slide__inner active">
+            <div class="mode-icon">📊</div>
+            <div class="mode-label">LIVE</div>
+            <div class="mode-name">Real-Time Base</div>
+          </div>
+        </div>
+
+        <!-- M1 · Cafeteria Mood -->
+        <div class="swiper-slide mode-slide" data-mode="m1">
+          <div class="mode-slide__inner">
+            <div class="mode-icon">🍽️</div>
+            <div class="mode-label">CAFETERIA</div>
+            <div class="mode-name">Cafeteria Mood</div>
+          </div>
+        </div>
+
+        <!-- M2 · CODE RED -->
+        <div class="swiper-slide mode-slide" data-mode="m2">
+          <div class="mode-slide__inner">
+            <div class="mode-icon">🚨</div>
+            <div class="mode-label">CODE RED</div>
+            <div class="mode-name">Threat Alert</div>
+          </div>
+        </div>
+
+        <!-- M3 · Audience Reactions -->
+        <div class="swiper-slide mode-slide" data-mode="m3">
+          <div class="mode-slide__inner">
+            <div class="mode-icon">🎬</div>
+            <div class="mode-label">AUDIENCE</div>
+            <div class="mode-name">Audience Reactions</div>
+          </div>
+        </div>
+
+        <!-- M4 · Speech Coach -->
+        <div class="swiper-slide mode-slide" data-mode="m4">
+          <div class="mode-slide__inner">
+            <div class="mode-icon">🎤</div>
+            <div class="mode-label">COACH</div>
+            <div class="mode-name">Speech Coach</div>
+          </div>
+        </div>
+
+        <!-- M5 · Mimic Game -->
+        <div class="swiper-slide mode-slide" data-mode="m5">
+          <div class="mode-slide__inner">
+            <div class="mode-icon">🎮</div>
+            <div class="mode-label">MIMIC</div>
+            <div class="mode-name">Mimic Game</div>
+          </div>
+        </div>
+
+      </div>
+      <!-- Navigation -->
+      <div class="swiper-button-prev"></div>
+      <div class="swiper-button-next"></div>
+    </div>
+  </section>
+
+  <!-- Off-screen canvas for frame capture -->
+  <canvas id="capture-canvas" width="640" height="480" style="display:none;"></canvas>
+
+  <!-- Audio element for CODE RED alarm -->
+  <audio id="alarm-sound" preload="auto"></audio>
+
+  <!-- Swiper JS -->
+  <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+
+  <!-- App logic -->
+  <script src="app.js"></script>
+</body>
+</html>

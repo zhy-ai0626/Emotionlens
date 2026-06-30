@@ -1,0 +1,48 @@
+/home/zhy211423/training/finetune.py:100: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(args.ckpt, map_location=device)
+device: cuda
+loaded /home/zhy211423/training/checkpoints/best.pt: epoch=29  val_acc(saved)=0.800  img_size=224  face_dir=raw_face
+
+target=user5  n=110
+  class dist: {'neutral': 21, 'happiness': 15, 'surprise': 15, 'sadness': 15, 'disgust': 15, 'fear': 15, 'anger': 14}
+  ft_train  n=88  ({'neutral': np.int64(17), 'fear': np.int64(12), 'disgust': np.int64(12), 'sadness': np.int64(12), 'happiness': np.int64(12), 'surprise': np.int64(12), 'anger': np.int64(11)})
+  ft_eval   n=22  ({'neutral': np.int64(4), 'disgust': np.int64(3), 'anger': np.int64(3), 'fear': np.int64(3), 'happiness': np.int64(3), 'sadness': np.int64(3), 'surprise': np.int64(3)})
+
+=== Generic (best.pt) on ft_eval ===
+  acc=0.091  loss=2.062  n=22
+generic ft_eval (rows=true, cols=pred):
+          neutr  happi  surpr  sadne  anger  disgu   fear
+ neutral      2      0      0      0      0      0      2
+happines      2      0      0      0      0      0      1
+surprise      1      0      0      0      0      0      2
+ sadness      3      0      0      0      0      0      0
+   anger      2      0      0      0      0      0      1
+ disgust      3      0      0      0      0      0      0
+    fear      3      0      0      0      0      0      0
+
+frozen up to layer3.  trainable params = 8,397,319 / 11,180,103 (75.1%)
+  ft epoch 1/5  loss=1.653  acc=0.341
+  ft epoch 2/5  loss=1.617  acc=0.352
+  ft epoch 3/5  loss=1.514  acc=0.386
+  ft epoch 4/5  loss=1.460  acc=0.432
+  ft epoch 5/5  loss=1.477  acc=0.489
+
+=== Personalized on ft_eval ===
+  acc=0.591  loss=1.390  n=22
+personalized ft_eval (rows=true, cols=pred):
+          neutr  happi  surpr  sadne  anger  disgu   fear
+ neutral      2      0      0      0      0      0      2
+happines      0      2      0      0      0      0      1
+surprise      0      0      2      0      0      0      1
+ sadness      2      0      0      1      0      0      0
+   anger      1      0      0      0      1      0      1
+ disgust      0      0      0      0      0      3      0
+    fear      0      0      0      0      0      1      2
+
+=== Generic vs Personalized on ft_eval ===
+  generic       acc = 0.091
+  personalized  acc = 0.591
+  Δ                 = +0.500
+
+saved: /home/zhy211423/training/checkpoints/personalized.pt
+saved: /home/zhy211423/training/checkpoints/personalized_report.json
