@@ -30,8 +30,9 @@ EMA_GAMMA  = 0.6         # temporal smoothing weight for face tracker
 # ═══════════════════════════════════════════════════════════════
 # 1.5 Model backend (switch via env var EMO_MODEL or runtime API)
 # ═══════════════════════════════════════════════════════════════
-#   general      — best.pt (generic ResNet18, default)
-#   user1..user5 — personalized fine-tuned models
+#   general      — HSEmotion (default)
+#   distilled    — best_distilled.pt (distilled ResNet18)
+#   user1..user6 — personalized fine-tuned models
 MODEL_BACKEND = os.getenv("EMO_MODEL", "general")
 
 _FINAL_OUTPUTS = os.path.abspath(
@@ -47,7 +48,16 @@ def _resnet18_entry(filename, label):
     }
 
 MODEL_REGISTRY = {
-    "general": _resnet18_entry("best.pt", "General (best.pt)"),
+    # General (default) — HSEmotion EfficientNet-B2, AffectNet pre-trained.
+    # SOTA public baseline.
+    "general": {
+        "architecture": "hsemotion_b2_7",
+        "path": os.path.expanduser("~/.hsemotion/enet_b2_7.pt"),
+        "state_key": None,
+        "label": "General · HSEmotion (SOTA)",
+    },
+    # Our own ResNet18 trained on FER+/RAF-DB/self.
+    "best":    _resnet18_entry("best.pt", "Original (best.pt)"),
     "user1":   _resnet18_entry("personalized_user1.pt", "Personalized · user1"),
     "user2":   _resnet18_entry("personalized_user2.pt", "Personalized · user2"),
     "user3":   _resnet18_entry("personalized_user3.pt", "Personalized · user3"),

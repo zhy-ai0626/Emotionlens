@@ -31,14 +31,17 @@ from facenet_pytorch import MTCNN
 from hsemotion.facial_emotions import HSEmotionRecognizer
 
 ROOT = Path(__file__).resolve().parent
-BEST_PT = ROOT / "final_outputs" / "best.pt"
+BEST_PT   = ROOT / "final_outputs" / "best.pt"
+USER1_PT  = ROOT / "final_outputs" / "personalized_user1.pt"
 MARGIN = 20
 
 EMO_OURS = ["neutral", "happiness", "surprise", "sadness", "anger", "disgust", "fear"]
 
 
-def load_best_pt():
-    ck = torch.load(str(BEST_PT), map_location="cpu", weights_only=False)
+def load_resnet18_ckpt(path):
+    """Load either best.pt or best_distilled.pt (same schema: dict with
+    model_state key + 7-class classifier head)."""
+    ck = torch.load(str(path), map_location="cpu", weights_only=False)
     m = tvm.resnet18(weights=None)
     m.fc = nn.Linear(m.fc.in_features, 7)
     m.load_state_dict(ck["model_state"])
@@ -79,8 +82,14 @@ def draw_label(img, text, org, color=(0, 255, 0)):
 
 
 def main():
-    print("[setup] Loading best.pt …")
-    ours = load_best_pt()
+    print("[setup] Loading best.pt (original ResNet18) …")
+    m_best = load_resnet18_ckpt(BEST_PT)
+    print("[setup] Loading personalized_user1.pt …")
+    if USER1_PT.exists():
+        m_user1 = load_resnet18_ckpt(USER1_PT)
+    else:
+        m_user1 = None
+        print(f"  MISSING: {USER1_PT} — user1 row will be skipped")
     print("[setup] Loading HSEmotion (enet_b2_7) …")
     rec = HSEmotionRecognizer(model_name="enet_b2_7", device="cpu")
     print("[setup] Initialising MTCNN …")
@@ -103,7 +112,7 @@ def main():
         boxes, _ = mtcnn.detect(pil)
 
         cv2.rectangle(frame, (0, 0), (W, 28), (0, 0, 0), -1)
-        cv2.putText(frame, "RED = best.pt    GREEN = HSEmotion (enet_b2_7)",
+        cv2.putText(frame, "RED = best.pt   CYAN = personalized_user1   GREEN = HSEmotion",
                     (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         if boxes is not None:
@@ -115,19 +124,26 @@ def main():
                     continue
                 face = frame[y1:y2, x1:x2]
 
-                emo_o, p_o, _ = predict_ours(ours, face)
+                emo_b, p_b, _ = predict_ours(m_best, face)
                 emo_h, p_h, _ = predict_hsemotion(rec, face)
+                if m_user1 is not None:
+                    emo_u, p_u, _ = predict_ours(m_user1, face)
+                else:
+                    emo_u, p_u = "n/a", 0.0
 
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (200, 200, 200), 2)
-                draw_label(frame, f"best.pt:   {emo_o} {p_o*100:.0f}%",
-                           (x1, y1 - 26), (40, 40, 255))
-                draw_label(frame, f"HSEmotion: {emo_h} {p_h*100:.0f}%",
+                draw_label(frame, f"best.pt: {emo_b} {p_b*100:.0f}%",
+                           (x1, y1 - 48), (40, 40, 255))
+                draw_label(frame, f"user1:   {emo_u} {p_u*100:.0f}%",
+                           (x1, y1 - 26), (240, 200, 40))
+                draw_label(frame, f"HSE:     {emo_h} {p_h*100:.0f}%",
                            (x1, y1 - 4), (60, 220, 100))
 
                 now = time.time()
                 if now - last_log > 1.0:
-                    print(f"  best.pt → {emo_o:10s} {p_o*100:5.1f}%   |   "
-                          f"HSEmotion → {emo_h:10s} {p_h*100:5.1f}%")
+                    print(f"  best.pt → {emo_b:10s} {p_b*100:5.1f}%   |   "
+                          f"user1 → {emo_u:10s} {p_u*100:5.1f}%   |   "
+                          f"HSE → {emo_h:10s} {p_h*100:5.1f}%")
                     last_log = now
 
         cv2.imshow("EmotionLens · best.pt vs HSEmotion", frame)

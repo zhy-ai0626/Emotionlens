@@ -2,10 +2,25 @@ import os
 import cv2
 import numpy as np
 import torch
+
+# HSEmotion .pt files were saved on CUDA; default-patch torch.load to CPU
+# so loading works in any environment. Idempotent.
+if not getattr(torch.load, "_emolens_cpu_patched", False):
+    _orig_torch_load = torch.load
+    def _cpu_torch_load(*args, **kwargs):
+        kwargs.setdefault("map_location", "cpu")
+        return _orig_torch_load(*args, **kwargs)
+    _cpu_torch_load._emolens_cpu_patched = True
+    torch.load = _cpu_torch_load
+
 import torch.nn as nn
 import torchvision.models as tvm
 from torchvision import transforms
 from PIL import Image
+
+# HSEmotion enet_b2_7 emits classes in a different order than our EMO list.
+# We use this to remap its softmax vector to our index order at inference.
+HSE_LABELS = ["anger", "disgust", "fear", "happiness", "neutral", "sadness", "surprise"]
 
 EMO = ["neutral", "happiness", "surprise", "sadness", "anger", "disgust", "fear"]
 
@@ -193,6 +208,18 @@ def predict_batch(model, faces_tensor, device):
     logits = model(x) + _logit_bias_on(device)
     return torch.softmax(logits / SOFTMAX_TEMPERATURE, 1).cpu().numpy()
 
+
+def _predict_hsemotion(recognizer, face_bgr):
+    """Run HSEmotion enet_b2_7 on a single BGR face crop and return a 7-vector
+    of probabilities in our EMO order. No logit bias / temperature applied —
+    HSEmotion is trained on AffectNet with balanced sampling, so the prior
+    correction we use for best.pt is not needed (and would skew its output).
+    """
+    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+    _, scores = recognizer.predict_emotions(face_rgb, logits=False)
+    # scores is in HSE_LABELS order; reindex to our EMO order.
+    return np.array([scores[HSE_LABELS.index(e)] for e in EMO], dtype=np.float32)
+
 def draw_panel(frame, faces_probs, face_rects):
     """在帧上绘制检测结果"""
     h, w = frame.shape[:2]
@@ -253,7 +280,8 @@ class EngineFER:
         self._labels: dict = {}
 
         # Preload all registry models into RAM so switch_model is a pointer swap.
-        # ResNet18 ~45MB each → ~270MB for 6 models, fits any demo machine.
+        # ResNet18 ~45MB each → ~270MB for 7 models, fits any demo machine.
+        # HSEmotion (EfficientNet-B2) is a separate path via HSEmotionRecognizer.
         print(f"[engine] Preloading {len(MODEL_REGISTRY)} models …")
         for k, cfg in MODEL_REGISTRY.items():
             ckpt_path = os.path.abspath(cfg["path"])
@@ -261,9 +289,15 @@ class EngineFER:
                 print(f"[engine]   {k}: SKIP (missing: {ckpt_path})")
                 continue
             try:
-                self._loaded[k] = load_model(
-                    ckpt_path, self.device, cfg["architecture"], cfg["state_key"]
-                )
+                if cfg["architecture"] == "hsemotion_b2_7":
+                    from hsemotion.facial_emotions import HSEmotionRecognizer
+                    self._loaded[k] = HSEmotionRecognizer(
+                        model_name="enet_b2_7", device=str(self.device),
+                    )
+                else:
+                    self._loaded[k] = load_model(
+                        ckpt_path, self.device, cfg["architecture"], cfg["state_key"]
+                    )
                 self._labels[k] = cfg["label"]
                 print(f"[engine]   {k}: OK ({cfg['label']})")
             except Exception as e:
@@ -357,7 +391,8 @@ class EngineFER:
 
         raw_rects, raw_probs_list = [], []
         if boxes is not None and len(boxes) > 0:
-            tensors = []
+            using_hse = (self.model_key == "hsemotion")
+            tensors, face_crops = [], []
             margin = 20
             for box in boxes:
                 x1, y1, x2, y2 = box.tolist()
@@ -367,9 +402,17 @@ class EngineFER:
                 # Drop faces too small to classify reliably (see MIN_CROP_PX)
                 if x2 - x1 < MIN_CROP_PX or y2 - y1 < MIN_CROP_PX:
                     continue
-                tensors.append(preprocess_face(frame[y1:y2, x1:x2], self.img_size))
+                if using_hse:
+                    face_crops.append(frame[y1:y2, x1:x2])
+                else:
+                    tensors.append(preprocess_face(frame[y1:y2, x1:x2], self.img_size))
                 raw_rects.append((x1, y1, x2 - x1, y2 - y1))
-            if tensors:
+
+            if using_hse and face_crops:
+                raw_probs_list = [
+                    _predict_hsemotion(self.model, crop) for crop in face_crops
+                ]
+            elif tensors:
                 batch_x = torch.cat(tensors, dim=0)
                 raw_probs_list = list(predict_batch(self.model, batch_x, self.device))
 
