@@ -274,10 +274,12 @@ class EngineFER:
         self.model = None
         self.model_key = None
         self.model_name = None
+        self.model_architecture = None
         self._lock = threading.Lock()
         self.tracker = FaceTracker()
         self._loaded: dict = {}
         self._labels: dict = {}
+        self._architectures: dict = {}
 
         # Preload all registry models into RAM so switch_model is a pointer swap.
         # ResNet18 ~45MB each → ~270MB for 7 models, fits any demo machine.
@@ -299,6 +301,7 @@ class EngineFER:
                         ckpt_path, self.device, cfg["architecture"], cfg["state_key"]
                     )
                 self._labels[k] = cfg["label"]
+                self._architectures[k] = cfg["architecture"]
                 print(f"[engine]   {k}: OK ({cfg['label']})")
             except Exception as e:
                 print(f"[engine]   {k}: FAIL ({e})")
@@ -322,7 +325,9 @@ class EngineFER:
             try:
                 dummy = torch.zeros(1, 3, self.img_size, self.img_size, device=self.device)
                 with torch.no_grad():
-                    for m in self._loaded.values():
+                    for key, m in self._loaded.items():
+                        if self._architectures.get(key) == "hsemotion_b2_7":
+                            continue
                         m(dummy)
                 torch.cuda.synchronize()
                 print("[engine] GPU warmup complete")
@@ -343,6 +348,7 @@ class EngineFER:
                 self.model = self._loaded[key]
                 self.model_key = key
                 self.model_name = self._labels.get(key, key)
+                self.model_architecture = self._architectures.get(key)
                 self.tracker.reset()
             return self.model_name
 
@@ -365,16 +371,24 @@ class EngineFER:
             raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
         print(f"[engine] Loading model on demand: {label}")
-        new_model = load_model(ckpt_path, self.device, architecture, state_key)
+        if architecture == "hsemotion_b2_7":
+            from hsemotion.facial_emotions import HSEmotionRecognizer
+            new_model = HSEmotionRecognizer(
+                model_name="enet_b2_7", device=str(self.device),
+            )
+        else:
+            new_model = load_model(ckpt_path, self.device, architecture, state_key)
 
         with self._lock:
             self.model = new_model
             self.model_key = resolved_key
             self.model_name = label
+            self.model_architecture = architecture
             self.tracker.reset()
             if resolved_key is not None:
                 self._loaded[resolved_key] = new_model
                 self._labels[resolved_key] = label
+                self._architectures[resolved_key] = architecture
         return label
 
     def process_frame(self, frame, mode='m0', mode_state=None):
@@ -391,7 +405,7 @@ class EngineFER:
 
         raw_rects, raw_probs_list = [], []
         if boxes is not None and len(boxes) > 0:
-            using_hse = (self.model_key == "hsemotion")
+            using_hse = (self.model_architecture == "hsemotion_b2_7")
             tensors, face_crops = [], []
             margin = 20
             for box in boxes:

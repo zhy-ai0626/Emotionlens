@@ -10,14 +10,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
-  <!-- Swiper 11 -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
-
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 
   <!-- App styles -->
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=7" />
 </head>
 <body data-active-mode="m0">
 
@@ -57,6 +54,30 @@
     </div>
   </header>
 
+  <!-- ═══════════════ LENS NAVIGATION ═══════════════ -->
+  <nav class="mode-nav" aria-label="Emotion lenses">
+    <div class="mode-nav__scroller">
+      <button class="mode-tab active" type="button" data-mode="m0">
+        <span aria-hidden="true">📊</span><span>Live</span>
+      </button>
+      <button class="mode-tab" type="button" data-mode="m1">
+        <span aria-hidden="true">🍽️</span><span>Cafeteria</span>
+      </button>
+      <button class="mode-tab" type="button" data-mode="m2">
+        <span aria-hidden="true">🚨</span><span>Code Red</span>
+      </button>
+      <button class="mode-tab" type="button" data-mode="m3">
+        <span aria-hidden="true">🎬</span><span>Audience</span>
+      </button>
+      <button class="mode-tab" type="button" data-mode="m4">
+        <span aria-hidden="true">🎤</span><span>Coach</span>
+      </button>
+      <button class="mode-tab" type="button" data-mode="m5">
+        <span aria-hidden="true">🎮</span><span>Mimic</span>
+      </button>
+    </div>
+  </nav>
+
   <!-- ═══════════════ MAIN DASHBOARD ═══════════════ -->
   <main class="dashboard">
 
@@ -90,12 +111,18 @@
     <!-- ────── RIGHT: Sidebar ────── -->
     <aside class="sidebar">
 
-      <!-- Big Lens Title -->
-      <h2 class="lens-title" id="lens-title">Live</h2>
+      <div class="analysis-heading">
+        <div>
+          <span class="eyebrow" id="context-label">Group overview</span>
+          <h2 class="lens-title" id="lens-title">Live</h2>
+          <p class="analysis-meta" id="analysis-meta">Waiting for faces</p>
+        </div>
+        <button class="clear-focus" id="clear-focus" type="button" hidden>Group view</button>
+      </div>
 
       <!-- Dominant emotion display -->
       <div class="glass-card dominant-card">
-        <div class="card-label">DOMINANT EMOTION</div>
+        <div class="card-label" id="dominant-label">GROUP MOOD</div>
         <div class="dominant-display">
           <span class="dominant-emoji" id="dominant-emoji">😐</span>
           <div class="dominant-info">
@@ -122,82 +149,13 @@
     </aside>
   </main>
 
-  <!-- ═══════════════ LENS CAROUSEL ═══════════════ -->
-  <section class="mode-carousel-section">
-    <div class="swiper mode-swiper">
-      <div class="swiper-wrapper">
-
-        <!-- M0 · Live -->
-        <div class="swiper-slide mode-slide" data-mode="m0">
-          <div class="mode-slide__inner active">
-            <div class="mode-icon">📊</div>
-            <div class="mode-label">LIVE</div>
-            <div class="mode-name">Real-Time Base</div>
-          </div>
-        </div>
-
-        <!-- M1 · Cafeteria Mood -->
-        <div class="swiper-slide mode-slide" data-mode="m1">
-          <div class="mode-slide__inner">
-            <div class="mode-icon">🍽️</div>
-            <div class="mode-label">CAFETERIA</div>
-            <div class="mode-name">Cafeteria Mood</div>
-          </div>
-        </div>
-
-        <!-- M2 · CODE RED -->
-        <div class="swiper-slide mode-slide" data-mode="m2">
-          <div class="mode-slide__inner">
-            <div class="mode-icon">🚨</div>
-            <div class="mode-label">CODE RED</div>
-            <div class="mode-name">Threat Alert</div>
-          </div>
-        </div>
-
-        <!-- M3 · Audience Reactions -->
-        <div class="swiper-slide mode-slide" data-mode="m3">
-          <div class="mode-slide__inner">
-            <div class="mode-icon">🎬</div>
-            <div class="mode-label">AUDIENCE</div>
-            <div class="mode-name">Audience Reactions</div>
-          </div>
-        </div>
-
-        <!-- M4 · Speech Coach -->
-        <div class="swiper-slide mode-slide" data-mode="m4">
-          <div class="mode-slide__inner">
-            <div class="mode-icon">🎤</div>
-            <div class="mode-label">COACH</div>
-            <div class="mode-name">Speech Coach</div>
-          </div>
-        </div>
-
-        <!-- M5 · Mimic Game -->
-        <div class="swiper-slide mode-slide" data-mode="m5">
-          <div class="mode-slide__inner">
-            <div class="mode-icon">🎮</div>
-            <div class="mode-label">MIMIC</div>
-            <div class="mode-name">Mimic Game</div>
-          </div>
-        </div>
-
-      </div>
-      <!-- Navigation -->
-      <div class="swiper-button-prev"></div>
-      <div class="swiper-button-next"></div>
-    </div>
-  </section>
-
   <!-- Off-screen canvas for frame capture -->
   <canvas id="capture-canvas" width="640" height="480" style="display:none;"></canvas>
 
   <!-- Audio element for CODE RED alarm -->
   <audio id="alarm-sound" preload="auto"></audio>
 
-  <!-- Swiper JS -->
-  <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
-
   <!-- App logic -->
-  <script src="app.js"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

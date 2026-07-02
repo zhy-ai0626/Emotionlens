@@ -12,6 +12,8 @@
   const JPEG_Q      = 0.6;
   const SEND_INTERVAL = 100;   // ~10 fps
   const LERP_RATE   = 0.35;
+  const LOW_CONFIDENCE_PCT = 45;
+  const TENTATIVE_CONFIDENCE_PCT = 65;
 
   // Order MUST match backend EMO_CLASSES (config.py).
   // datasets[7] marker index in m3 timeline chart relies on length === 7.
@@ -54,6 +56,10 @@
   const $placeholder  = document.getElementById('cam-placeholder');
   const $faceCount    = document.getElementById('face-count');
   const $lensTitle    = document.getElementById('lens-title');
+  const $contextLabel = document.getElementById('context-label');
+  const $analysisMeta = document.getElementById('analysis-meta');
+  const $clearFocus   = document.getElementById('clear-focus');
+  const $dominantLabel= document.getElementById('dominant-label');
   const $dominantDisplay = document.querySelector('.dominant-display');
   const $dominantEmoji= document.getElementById('dominant-emoji');
   const $dominantName = document.getElementById('dominant-name');
@@ -125,9 +131,12 @@
   document.addEventListener('DOMContentLoaded', () => {
     updateShareHint();
     buildEmotionBars();
-    initSwiper();
+    initModeNav();
     setupModelPicker();
     setupCanvasClick();
+    setupFocusControls();
+    buildModePanel();
+    updateSidebar();
     startCamera();
     connectWS();
     requestAnimationFrame(renderLoop);
@@ -165,7 +174,7 @@
     $emoBars.innerHTML = EMOTIONS.map(emo => `
       <div class="emo-row" data-emo="${emo}">
         <span class="emo-row__emoji">${EMOJI_MAP[emo]}</span>
-        <span class="emo-row__label">${emo.slice(0,8)}</span>
+        <span class="emo-row__label">${emo}</span>
         <div class="emo-row__track">
           <div class="emo-row__fill" id="bar-${emo}" style="width:0%"></div>
         </div>
@@ -174,22 +183,13 @@
     `).join('');
   }
 
-  /* ─── Swiper ─── */
-  let swiperInstance;
-  function initSwiper() {
-    swiperInstance = new Swiper('.mode-swiper', {
-      slidesPerView: 'auto', centeredSlides: true, spaceBetween: 14,
-      effect: 'coverflow',
-      coverflowEffect: { rotate:0, stretch:0, depth:80, modifier:1.2, slideShadows:false },
-      navigation: { prevEl:'.swiper-button-prev', nextEl:'.swiper-button-next' },
-      on: {
-        click(swiper, e) {
-          const slide = e.target.closest('.mode-slide');
-          if (!slide) return;
-          const mode = slide.dataset.mode;
-          if (mode && mode !== currentMode) selectMode(mode);
-        }
-      }
+  /* ─── Compact lens navigation ─── */
+  function initModeNav() {
+    document.querySelectorAll('.mode-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const mode = tab.dataset.mode;
+        if (mode && mode !== currentMode) selectMode(mode);
+      });
     });
   }
 
@@ -197,10 +197,12 @@
     currentMode = mode;
     document.body.dataset.activeMode = mode;
 
-    // Update carousel
-    document.querySelectorAll('.mode-slide__inner').forEach(el => el.classList.remove('active'));
-    const activeSlide = document.querySelector(`.mode-slide[data-mode="${mode}"] .mode-slide__inner`);
-    if (activeSlide) activeSlide.classList.add('active');
+    // Update navigation
+    document.querySelectorAll('.mode-tab').forEach(tab => {
+      const active = tab.dataset.mode === mode;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-current', active ? 'page' : 'false');
+    });
 
     // Update lens title
     const def = LENS_DEFS[mode] || { title: mode };
@@ -263,36 +265,32 @@
     for (const f of faces) {
       const [x, y, w, h] = f.bbox;
       const dx = frameW - x - w;
-      const color = EMO_COLORS[f.dominant] || '#fff';
+      const pct = Math.round((f.probs?.[f.dominant] || f.conf || 0) * 100);
+      const isLow = pct < LOW_CONFIDENCE_PCT;
+      const color = isLow ? '#A8A878' : (EMO_COLORS[f.dominant] || '#fff');
       const isSel = (f.track_id === selectedTrackId);
 
       ctx.lineWidth = isSel ? 4 : 2;
       ctx.strokeStyle = color;
+      ctx.setLineDash(isLow ? [8, 5] : []);
       ctx.strokeRect(dx, y, w, h);
+      ctx.setLineDash([]);
 
-      // Top label: emoji + dominant emotion + %
+      // Top label: stable person id + concise confidence state.
       const emoji = EMOJI_MAP[f.dominant] || '';
-      const pct = Math.round((f.probs?.[f.dominant] || f.conf || 0) * 100);
+      const emotionLabel = f.dominant;
       const labelFont = isSel ? 'bold 22px Inter, sans-serif' : 'bold 16px Inter, sans-serif';
-      const labelText = `${emoji}  ${f.dominant}  ${pct}%`;
+      const labelText = `#${f.track_id}  ${emoji} ${emotionLabel}  ${pct}%`;
       ctx.font = labelFont;
       const tw = ctx.measureText(labelText).width + 16;
       const th = isSel ? 30 : 24;
+      const labelX = Math.max(0, Math.min(dx, frameW - tw));
+      const labelY = Math.max(0, y - th);
       ctx.fillStyle = color;
-      ctx.fillRect(dx, y - th, tw, th);
+      ctx.fillRect(labelX, labelY, tw, th);
       ctx.fillStyle = '#000';
-      ctx.fillText(labelText, dx + 8, y - (isSel ? 9 : 7));
+      ctx.fillText(labelText, labelX + 8, labelY + (isSel ? 21 : 17));
 
-      // Selected face: track-id badge top-left
-      if (isSel) {
-        const badge = `#${f.track_id}`;
-        ctx.font = 'bold 18px "Space Grotesk", monospace';
-        const bw = ctx.measureText(badge).width + 12;
-        ctx.fillStyle = '#000';
-        ctx.fillRect(dx, y, bw, 24);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(badge, dx + 6, y + 18);
-      }
     }
 
     // "Lost · 2.3s" indicator if selected face has temporarily vanished
@@ -329,15 +327,26 @@
           selectedLostSince = null;
           lastSelectedFace = f;
           wsSend({ type: 'set_focus', track_id: f.track_id });
+          updateSidebar();
+          drawOverlay(latestFaces);
           return;
         }
       }
-      // Clicked empty space → clear selection
-      selectedTrackId = null;
-      selectedLostSince = null;
-      lastSelectedFace = null;
-      wsSend({ type: 'set_focus', track_id: null });
+      clearFocus();
     });
+  }
+
+  function setupFocusControls() {
+    if ($clearFocus) $clearFocus.addEventListener('click', clearFocus);
+  }
+
+  function clearFocus() {
+    selectedTrackId = null;
+    selectedLostSince = null;
+    lastSelectedFace = null;
+    wsSend({ type: 'set_focus', track_id: null });
+    updateSidebar();
+    drawOverlay(latestFaces);
   }
 
   /* ═══════════════ WEBSOCKET ═══════════════ */
@@ -433,6 +442,23 @@
   }
 
   /* ═══════════════ SIDEBAR ═══════════════ */
+  function buildGroupSummary() {
+    if (!latestFaces.length) return null;
+    const probs = Object.fromEntries(EMOTIONS.map(emo => [emo, 0]));
+    latestFaces.forEach(face => {
+      EMOTIONS.forEach(emo => { probs[emo] += face.probs?.[emo] || 0; });
+    });
+    EMOTIONS.forEach(emo => { probs[emo] /= latestFaces.length; });
+    const dominant = EMOTIONS.reduce((best, emo) => probs[emo] > probs[best] ? emo : best, EMOTIONS[0]);
+    return {
+      dominant,
+      probs,
+      conf: probs[dominant],
+      isGroup: true,
+      count: latestFaces.length
+    };
+  }
+
   function pickSidebarFace() {
     // 1. If a track is explicitly selected, prefer it
     if (selectedTrackId !== null) {
@@ -454,35 +480,58 @@
         return lastSelectedFace;
       }
     }
-    // 2. Default: first detected face
-    return latestFaces[0] || null;
+    // 2. With no explicit focus, show the aggregate group result.
+    return buildGroupSummary();
   }
 
   function updateSidebar() {
     const face = pickSidebarFace();
-    if (!face) return;
-    const probs = face.probs || {};
-    const dominant = face.dominant || 'neutral';
+    const isGroup = !face || !!face.isGroup;
+    const probs = face?.probs || {};
+    const dominant = face?.dominant || 'neutral';
+    const pct = face ? Math.round((probs[dominant] || face.conf || 0) * 100) : 0;
+    const isLow = !!face && pct < LOW_CONFIDENCE_PCT;
+    const isTentative = !!face && pct >= LOW_CONFIDENCE_PCT && pct < TENTATIVE_CONFIDENCE_PCT;
+
+    if ($contextLabel) {
+      $contextLabel.textContent = isGroup ? 'Group overview' : `Person #${face.track_id}`;
+    }
+    if ($dominantLabel) {
+      $dominantLabel.textContent = isGroup ? 'GROUP MOOD' : 'SELECTED PERSON';
+    }
+    if ($analysisMeta) {
+      if (!face) $analysisMeta.textContent = 'Waiting for faces';
+      else if (isGroup) $analysisMeta.textContent = `${latestFaces.length} ${latestFaces.length === 1 ? 'person' : 'people'} · average prediction`;
+      else if (selectedLostSince !== null) $analysisMeta.textContent = 'Temporarily lost · keeping last result';
+      else $analysisMeta.textContent = 'Click empty camera space to return to group';
+    }
+    if ($clearFocus) $clearFocus.hidden = isGroup;
+    const dominantCard = document.querySelector('.dominant-card');
+    if (dominantCard) {
+      dominantCard.classList.toggle('confidence-low', isLow);
+      dominantCard.classList.toggle('confidence-medium', isTentative);
+    }
 
     EMOTIONS.forEach(emo => {
       const target = (probs[emo] || 0) * 100;
       animatedProbs[emo] = target;
     });
-    const pct = Math.round((probs[dominant] || 0) * 100);
     animatedDominantPct = pct;
 
-    if (dominant !== currentDominantEmo) {
+    const nextEmoji = !face ? '👥' : (EMOJI_MAP[dominant] || '\u{1f610}');
+    if (dominant !== currentDominantEmo || $dominantEmoji.textContent !== nextEmoji) {
       currentDominantEmo = dominant;
-      $dominantEmoji.textContent = EMOJI_MAP[dominant] || '\u{1f610}';
+      $dominantEmoji.textContent = nextEmoji;
       $dominantEmoji.classList.add('bounce');
       setTimeout(() => $dominantEmoji.classList.remove('bounce'), 350);
     }
     // Bind sidebar border color to current emotion (color-coded selection cue)
     if ($dominantDisplay) {
-      $dominantDisplay.style.borderColor = EMO_COLORS[dominant] || '#000';
+      $dominantDisplay.style.borderColor = isLow ? '#A8A878' : (EMO_COLORS[dominant] || '#000');
     }
-    $dominantName.textContent = dominant;
-    $dominantBadge.textContent = TYPE_NAMES[dominant] || dominant.toUpperCase();
+    $dominantName.textContent = !face ? 'No faces' : dominant;
+    $dominantBadge.textContent = !face ? 'WAITING' : isLow ? 'LOW CONFIDENCE'
+      : isTentative ? 'TENTATIVE' : (TYPE_NAMES[dominant] || dominant.toUpperCase());
     $dominantBadge.dataset.type = dominant;
     $dominantPct.textContent = pct + '%';
 
@@ -492,6 +541,12 @@
       const valEl  = document.getElementById(`val-${emo}`);
       if (fillEl) fillEl.style.width = val + '%';
       if (valEl)  valEl.textContent = val + '%';
+    });
+    const topEmotions = new Set([...EMOTIONS]
+      .sort((a, b) => (probs[b] || 0) - (probs[a] || 0))
+      .slice(0, 3));
+    document.querySelectorAll('.emo-row').forEach(row => {
+      row.classList.toggle('is-top', !!face && topEmotions.has(row.dataset.emo));
     });
 
     $faceCount.textContent = latestFaces.length === 0 ? 'No faces detected'
